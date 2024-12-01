@@ -177,6 +177,9 @@ protected:
   void publishOdom(
     tf2::Transform & odom2baseTransf, sl::Pose & slPose,
     rclcpp::Time t);
+  void publishOdomRaw(
+    sl::Pose & slPose,
+    rclcpp::Time t);
   void publishPose();
   void publishGnssPose();
   void publishPoseStatus();
@@ -249,6 +252,7 @@ private:
   // ----> Topics
   std::string mTopicRoot = "~/";
   std::string mOdomTopic;
+  std::string mOdomRawTopic;
   std::string mPoseTopic;
   std::string mPoseStatusTopic;
   std::string mPoseCovTopic;
@@ -601,6 +605,7 @@ private:
   poseStatusPub mPubPoseStatus;
   poseCovPub mPubPoseCov;
   odomPub mPubOdom;
+  odomPub mPubOdomRaw;
   odomPub mPubGnssPose;
   gnssFusionStatusPub mPubGnssPoseStatus;
   pathPub mPubOdomPath;

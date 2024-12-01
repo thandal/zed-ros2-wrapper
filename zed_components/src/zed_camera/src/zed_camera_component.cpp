@@ -3386,6 +3386,7 @@ void ZedCamera::initPublishers()
   mOriginFixTopic = mPoseTopic + "/origin_fix";
 
   mOdomTopic = mTopicRoot + "odom";
+  mOdomRawTopic = mTopicRoot + "odom_raw";
   mOdomPathTopic = mTopicRoot + "path_odom";
   mPosePathTopic = mTopicRoot + "path_map";
 
@@ -3597,6 +3598,11 @@ void ZedCamera::initPublishers()
     RCLCPP_INFO_STREAM(
       get_logger(),
       "Advertised on topic: " << mPubOdom->get_topic_name());
+    mPubOdomRaw =
+      create_publisher<nav_msgs::msg::Odometry>(mOdomRawTopic, mQos, mPubOpt);
+    RCLCPP_INFO_STREAM(
+      get_logger(),
+      "Advertised on topic: " << mPubOdomRaw->get_topic_name());
     mPubPosePath =
       create_publisher<nav_msgs::msg::Path>(mPosePathTopic, mQos, mPubOpt);
     RCLCPP_INFO_STREAM(
@@ -7540,6 +7546,8 @@ void ZedCamera::processOdometry()
 
   // Publish odometry message
   publishOdom(mOdom2BaseTransf, deltaOdom, mFrameTimestamp);
+  // Publish raw (camera relative) message
+  publishOdomRaw(deltaOdom, mFrameTimestamp);
 }
 
 void ZedCamera::publishOdom(
@@ -7552,7 +7560,7 @@ void ZedCamera::publishOdom(
     odomSub = count_subscribers(mOdomTopic);  // mPubOdom subscribers
   } catch (...) {
     rcutils_reset_error();
-    DEBUG_STREAM_PT("publishPose: Exception while counting subscribers");
+    DEBUG_STREAM_PT("publishOdom: Exception while counting subscribers");
     return;
   }
 
@@ -7593,6 +7601,54 @@ void ZedCamera::publishOdom(
     DEBUG_STREAM_PT("Publishing ODOM message");
     try {
       mPubOdom->publish(std::move(odomMsg));
+    } catch (std::system_error & e) {
+      DEBUG_STREAM_COMM("Message publishing ecception: " << e.what());
+    } catch (...) {
+      DEBUG_STREAM_COMM("Message publishing generic ecception: ");
+    }
+  }
+}
+
+void ZedCamera::publishOdomRaw(
+  sl::Pose & slPose,
+  rclcpp::Time t)
+{
+  size_t odomRawSub = 0;
+
+  try {
+    odomRawSub = count_subscribers(mOdomRawTopic);  // mPubOdomRaw subscribers
+  } catch (...) {
+    rcutils_reset_error();
+    DEBUG_STREAM_PT("publishOdomRaw: Exception while counting subscribers");
+    return;
+  }
+
+  if (odomRawSub) {
+    odomMsgPtr odomRawMsg = std::make_unique<nav_msgs::msg::Odometry>();
+
+    odomRawMsg->header.stamp = t;
+    odomRawMsg->header.frame_id = mBaseFrameId;  // camera_frame
+    odomRawMsg->child_frame_id = mBaseFrameId;   // camera_frame
+
+    // Add all value in odometry message
+    odomRawMsg->pose.pose.position.x = slPose.getTranslation()[0];
+    odomRawMsg->pose.pose.position.y = slPose.getTranslation()[1];
+    odomRawMsg->pose.pose.position.z = slPose.getTranslation()[2];
+    odomRawMsg->pose.pose.orientation.x = slPose.getOrientation()[0];
+    odomRawMsg->pose.pose.orientation.y = slPose.getOrientation()[1];
+    odomRawMsg->pose.pose.orientation.z = slPose.getOrientation()[2];
+    odomRawMsg->pose.pose.orientation.w = slPose.getOrientation()[3];
+
+    // Odometry pose covariance
+    for (size_t i = 0; i < odomRawMsg->pose.covariance.size(); i++) {
+      odomRawMsg->pose.covariance[i] =
+        static_cast<double>(slPose.pose_covariance[i]);
+    }
+
+    // Publish raw odometry message
+    DEBUG_STREAM_PT("Publishing ODOM RAW message");
+    try {
+      mPubOdomRaw->publish(std::move(odomRawMsg));
     } catch (std::system_error & e) {
       DEBUG_STREAM_COMM("Message publishing ecception: " << e.what());
     } catch (...) {
